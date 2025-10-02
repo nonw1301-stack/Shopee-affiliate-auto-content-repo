@@ -7,8 +7,8 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-shopee = ShopeeClient()
-openai_client = OpenAIClient()
+shopee = None
+openai_client = None
 # instantiate DB lazily so tests can patch Config.OUTPUT_DIR / DB easily
 db = None
 
@@ -18,9 +18,15 @@ def run_once():
     # ensure output dir exists (Config may be updated by tests before calling)
     os.makedirs(Config.OUTPUT_DIR, exist_ok=True)
 
-    global db
+    global db, shopee, openai_client
     if db is None:
         db = DB()
+
+    # lazy init clients so tests that patch the client classes work
+    if shopee is None:
+        shopee = ShopeeClient()
+    if openai_client is None:
+        openai_client = OpenAIClient()
 
     items = shopee.search_popular_items(limit=Config.MAX_PRODUCTS)
     # สมมติ response มี items list
