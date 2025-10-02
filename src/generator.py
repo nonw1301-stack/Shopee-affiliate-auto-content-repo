@@ -3,6 +3,9 @@ from .openai_client import OpenAIClient
 from .config import Config
 from .db import DB
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 shopee = ShopeeClient()
 openai_client = OpenAIClient()
@@ -24,10 +27,14 @@ def run_once():
         name = it.get("name")
         price = (it.get("price") or 0) / 100000
 
-        aff = shopee.generate_affiliate_link(itemid, shopid)
-        aff_link = aff.get("affiliate_link") or aff.get("url")
+        try:
+            aff = shopee.generate_affiliate_link(itemid, shopid)
+            aff_link = aff.get("affiliate_link") or aff.get("url")
 
-        caption = openai_client.generate_caption(name, price, aff_link)
+            caption = openai_client.generate_caption(name, price, aff_link)
+        except Exception as e:
+            logger.exception("Failed to process item %s: %s", itemid, e)
+            continue
 
         out = {
             "name": name,
