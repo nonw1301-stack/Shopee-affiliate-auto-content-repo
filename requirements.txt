@@ -8,3 +8,4 @@ uvicorn
 PyYAML
 pytest
 cryptography
+keyring
