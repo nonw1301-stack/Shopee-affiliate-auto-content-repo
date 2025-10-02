@@ -9,12 +9,19 @@ logger = logging.getLogger(__name__)
 
 shopee = ShopeeClient()
 openai_client = OpenAIClient()
-db = DB()
+# instantiate DB lazily so tests can patch Config.OUTPUT_DIR / DB easily
+db = None
 
-os.makedirs(Config.OUTPUT_DIR, exist_ok=True)
 
 
 def run_once():
+    # ensure output dir exists (Config may be updated by tests before calling)
+    os.makedirs(Config.OUTPUT_DIR, exist_ok=True)
+
+    global db
+    if db is None:
+        db = DB()
+
     items = shopee.search_popular_items(limit=Config.MAX_PRODUCTS)
     # สมมติ response มี items list
     results = []
