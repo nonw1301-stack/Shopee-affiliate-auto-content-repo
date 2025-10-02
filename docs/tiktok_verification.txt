@@ -1,0 +1,2 @@
+# TikTok verification placeholder
+# If TikTok asks you to upload a file, they will provide a token string. Save that token here or create the file name they require.
