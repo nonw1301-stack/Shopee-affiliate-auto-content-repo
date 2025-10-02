@@ -22,6 +22,15 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
+# provider adapter helpers
+def _provider_field(resp: dict, *candidates, default=None):
+    """Return the first existing candidate field from response dict or default."""
+    for c in candidates:
+        if c in resp:
+            return resp[c]
+    return default
+
+
 # In-memory token store for this scaffold. Replace with persistent storage if needed.
 _TOKEN_STORE = {}
 
@@ -41,11 +50,12 @@ def get_authorize_url(client_key: str, redirect_uri: str, scope: str = "user.inf
     }
     if state:
         params["state"] = state
+    # code_challenge may be passed in params if provided
     qs = requests.utils.requote_uri("?" + "&".join(f"{k}={requests.utils.quote(str(v))}" for k, v in params.items()))
     return base + qs
 
 
-def exchange_code_for_token(client_key: str, client_secret: str, code: str, redirect_uri: str) -> dict:
+def exchange_code_for_token(client_key: str, client_secret: str, code: str, redirect_uri: str, state: str = None) -> dict:
     """Exchange an authorization code for an access token.
 
     The token endpoint URL is taken from env var `TIKTOK_TOKEN_URL` or the
@@ -56,6 +66,30 @@ def exchange_code_for_token(client_key: str, client_secret: str, code: str, redi
     if not token_url:
         raise RuntimeError("TIKTOK_TOKEN_URL not configured in env. Set the token endpoint before calling exchange_code_for_token.")
 
+    # load optional code_verifier if present for PKCE (use state-specific file when provided)
+    code_verifier = None
+    try:
+        outdir = os.getenv("OUTPUT_DIR") or "."
+        if state:
+            p = os.path.join(outdir, f"pkce_state_{state}.json")
+            if os.path.exists(p):
+                with open(p, 'r', encoding='utf-8') as fh:
+                    j = json.load(fh)
+                    code_verifier = j.get('code_verifier')
+        else:
+            # fallback: pick the first matching pkce_state file (legacy behavior)
+            import glob
+            for p in glob.glob(os.path.join(outdir, "pkce_state_*.json")):
+                try:
+                    with open(p, 'r', encoding='utf-8') as fh:
+                        j = json.load(fh)
+                        code_verifier = j.get('code_verifier')
+                        break
+                except Exception:
+                    continue
+    except Exception:
+        code_verifier = None
+
     data = {
         "client_key": client_key,
         "client_secret": client_secret,
@@ -63,6 +97,8 @@ def exchange_code_for_token(client_key: str, client_secret: str, code: str, redi
         "grant_type": "authorization_code",
         "redirect_uri": redirect_uri,
     }
+    if code_verifier:
+        data["code_verifier"] = code_verifier
 
     resp = requests.post(token_url, data=data, timeout=15)
     resp.raise_for_status()
@@ -170,7 +206,26 @@ def commit_upload(access_token: str, upload_id: str) -> dict:
     headers = {"Authorization": f"Bearer {access_token}"}
     resp = requests.post(url, json={"upload_id": upload_id}, headers=headers, timeout=15)
     resp.raise_for_status()
-    return resp.json()
+    j = resp.json()
+    # normalize provider-specific fields into a small metrics envelope
+    try:
+        outdir = os.path.join(Config.OUTPUT_DIR, "publish_metrics")
+        os.makedirs(outdir, exist_ok=True)
+        envelope = {
+            "upload_id": upload_id,
+            "timestamp": int(time.time()),
+            "provider_raw": j,
+            # friendly fields (try common candidate names)
+            "video_id": _provider_field(j, "video_id", "videoId", "id", default=None),
+            "status": _provider_field(j, "status", "code", default=None),
+            "message": _provider_field(j, "message", "msg", default=None),
+        }
+        path = os.path.join(outdir, f"commit_{upload_id}_{int(time.time())}.json")
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(envelope, fh, ensure_ascii=False, indent=2)
+    except Exception:
+        logger.exception("Failed to persist commit metrics")
+    return j
 
 
 def upload_video_chunked(title: str, video_path: str, access_token: str, dry_run: bool = True) -> dict:
@@ -241,12 +296,20 @@ def upload_video_chunked(title: str, video_path: str, access_token: str, dry_run
         checksum = md5_hex(chunk)
         headers = {"Authorization": f"Bearer {access_token}", "X-Chunk-MD5": checksum}
 
-        # retry per-part
-        tries = 3
+        # retry per-part with exponential backoff and basic metrics
+        max_retries = int(os.getenv("TIKTOK_PART_MAX_RETRIES", "4"))
+        backoff_base = float(os.getenv("TIKTOK_PART_BACKOFF_BASE", "0.5"))
         last_exc = None
-        while tries:
+        attempt = 0
+        start_time = time.time()
+        while attempt < max_retries:
+            attempt += 1
             try:
+                t0 = time.time()
                 resp = upload_chunk(upload_url, chunk, part_number, headers=headers)
+                t1 = time.time()
+                duration = t1 - t0
+
                 # validation: check server ack md5 matches local checksum
                 server_md5 = None
                 if isinstance(resp, dict):
@@ -260,10 +323,27 @@ def upload_video_chunked(title: str, video_path: str, access_token: str, dry_run
                 state_path.parent.mkdir(parents=True, exist_ok=True)
                 with open(state_path, "w", encoding="utf-8") as sf:
                     json.dump(state, sf)
+
+                # record metrics
+                metrics_path = state_path.parent / f"upload_metrics_{upload_id}.json"
+                metrics = {}
+                if metrics_path.exists():
+                    try:
+                        with open(metrics_path, "r", encoding="utf-8") as mf:
+                            metrics = json.load(mf)
+                    except Exception:
+                        metrics = {}
+                metrics.setdefault(str(part_number), []).append({"attempt": attempt, "duration": duration, "timestamp": int(t1)})
+                with open(metrics_path, "w", encoding="utf-8") as mf:
+                    json.dump(metrics, mf)
+
                 return {"status": "ok", "part": part_number}
             except Exception as e:
                 last_exc = e
-                tries -= 1
+                wait = backoff_base * (2 ** (attempt - 1))
+                logger.warning("Part %s attempt %s failed: %s — backing off %.2fs", part_number, attempt, str(e), wait)
+                time.sleep(wait)
+        # if we exhausted retries, raise last exception
         raise last_exc
 
     # run uploads in parallel
@@ -280,6 +360,15 @@ def upload_video_chunked(title: str, video_path: str, access_token: str, dry_run
                 raise
     # 4. Commit
     result = commit_upload(access_token, upload_id)
+    # after commit, persist a small summary mapping parts -> counts
+    try:
+        outdir = Path(Config.OUTPUT_DIR) / "publish_metrics"
+        outdir.mkdir(parents=True, exist_ok=True)
+        summary = {"upload_id": upload_id, "parts_uploaded": len(state.get("uploaded_parts", {})), "timestamp": int(time.time())}
+        with open(outdir / f"summary_{upload_id}_{int(time.time())}.json", "w", encoding="utf-8") as sf:
+            json.dump(summary, sf, ensure_ascii=False, indent=2)
+    except Exception:
+        logger.exception("Failed to write upload summary")
     return result
 
 

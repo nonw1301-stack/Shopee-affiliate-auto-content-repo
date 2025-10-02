@@ -23,7 +23,17 @@ def make_icon(path):
         fnt = ImageFont.truetype('arial.ttf', 420)
     except Exception:
         fnt = ImageFont.load_default()
-    w,h = draw.textsize('N', font=fnt)
+    # measure text size in a Pillow-version-compatible way
+    try:
+        bbox = draw.textbbox((0, 0), 'N', font=fnt)
+        w = bbox[2] - bbox[0]
+        h = bbox[3] - bbox[1]
+    except Exception:
+        try:
+            w, h = fnt.getsize('N')
+        except Exception:
+            # fallback to approximate values
+            w, h = (300, 300)
     draw.text(((size[0]-w)/2, (size[1]-h)/2-30), 'N', font=fnt, fill=bg)
     im.save(path)
 

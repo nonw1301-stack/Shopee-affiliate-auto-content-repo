@@ -1,0 +1,30 @@
+name: Manual real-run (requires secrets)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  real-run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run real-run smoke (manual)
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          TIKTOK_CLIENT_KEY: ${{ secrets.TIKTOK_CLIENT_KEY }}
+          TIKTOK_CLIENT_SECRET: ${{ secrets.TIKTOK_CLIENT_SECRET }}
+          TIKTOK_INIT_UPLOAD_URL: ${{ secrets.TIKTOK_INIT_UPLOAD_URL }}
+          TIKTOK_PART_UPLOAD_URL: ${{ secrets.TIKTOK_PART_UPLOAD_URL }}
+          TIKTOK_COMMIT_UPLOAD_URL: ${{ secrets.TIKTOK_COMMIT_UPLOAD_URL }}
+        run: |
+          # This workflow will run the runner in --run mode once. It requires that
+          # the secret endpoints and credentials are set in the repository secrets.
+          python -m src.runner --run

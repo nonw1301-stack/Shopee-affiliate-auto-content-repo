@@ -29,6 +29,9 @@ def run_once():
         openai_client = OpenAIClient()
 
     items = shopee.search_popular_items(limit=Config.MAX_PRODUCTS)
+    # Developer/testing: force a sample item when Shopee returns empty and env flag is set
+    if (not items or not items.get("items")) and os.getenv("DEV_FORCE_ITEMS"):
+        items = {"items": [{"itemid": "dev-1", "shopid": "dev-shop", "name": "ตัวอย่างสินค้า", "price": 19900000}]}
     # สมมติ response มี items list
     results = []
     for it in items.get("items", [])[: Config.MAX_PRODUCTS]:

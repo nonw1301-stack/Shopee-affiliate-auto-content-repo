@@ -120,3 +120,57 @@ pytest -q
 - C: Harden retry/observability and add CI test matrix
 
 บอกผมได้เลยว่าต้องการให้เริ่มงานข้อไหนต่อ — ผมจะดำเนินการและอัปเดตทีละขั้นตอน
+
+### ตัวอย่าง `.env` เพิ่มเติม (TikTok)
+
+เพิ่มค่าเหล่านี้ใน `.env` หรือ environment ของคุณ:
+
+```
+TIKTOK_CLIENT_KEY=your_client_key
+TIKTOK_CLIENT_SECRET=your_client_secret
+TIKTOK_REDIRECT_URI=http://localhost:8080/tiktok/callback
+```
+
+### สร้าง Authorization URL แบบ CLI
+
+ใช้สคริปต์ช่วยสร้าง URL:
+
+```powershell
+python scripts/make_authorize_url.py --client-key your_client_key --redirect-uri http://localhost:8080/tiktok/callback
+```
+
+
+## OAuth (TikTok) — การตั้งค่าและตัวอย่าง
+
+ขั้นตอนเบื้องต้น:
+
+1. กำหนด environment variables ใน `.env` หรือระบบของคุณ:
+
+```
+TIKTOK_CLIENT_KEY=your_client_key
+TIKTOK_CLIENT_SECRET=your_client_secret
+TIKTOK_REDIRECT_URI=http://localhost:8080/tiktok/callback
+```
+
+2. รัน service callback (docker-compose จะมี service `oauth` รันที่พอร์ต 8080):
+
+```powershell
+docker-compose up --build
+```
+
+3. สร้าง URL สำหรับให้ผู้ใช้กดอนุญาต (authorization URL):
+
+ใน Python shell หรือ script:
+
+```python
+from src.poster_tiktok_api import get_authorize_url
+url = get_authorize_url(client_key="your_client_key", redirect_uri="http://localhost:8080/tiktok/callback")
+print(url)
+```
+
+4. เปิด URL ที่ได้ในเบราว์เซอร์ — หลังจากอนุญาต แอปจะ redirect กลับมาที่ `TIKTOK_REDIRECT_URI` ซึ่งจะถูก FastAPI endpoint `/tiktok/callback` รับและแลก `code` → `token` ให้โดยอัตโนมัติ
+
+5. เมื่อ token ถูกแลกและบันทึกไว้แล้ว (via `token_store`), runner สามารถเรียกใช้งาน `--run` เพื่อใช้ token ที่บันทึกไว้ในการอัพโหลดจริง
+
+หมายเหตุความปลอดภัย: เก็บ `TIKTOK_CLIENT_SECRET` และ token ใน secret manager ที่ปลอดภัย; ห้าม commit ลงใน repo
+

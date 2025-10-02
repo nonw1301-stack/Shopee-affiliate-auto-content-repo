@@ -6,6 +6,21 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - SHOPEE_PARTNER_ID=${SHOPEE_PARTNER_ID}
       - SHOPEE_PARTNER_KEY=${SHOPEE_PARTNER_KEY}
+      - TIKTOK_CLIENT_KEY=${TIKTOK_CLIENT_KEY}
+      - TIKTOK_CLIENT_SECRET=${TIKTOK_CLIENT_SECRET}
+      - TIKTOK_REDIRECT_URI=${TIKTOK_REDIRECT_URI}
     volumes:
       - ./output:/app/output
-    command: python -m src.main
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
