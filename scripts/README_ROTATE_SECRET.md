@@ -53,3 +53,20 @@
    - อย่าเปลี่ยนชื่อไฟล์หรือแก้ไขเนื้อหาใน `docs/` ด้วยตัวเองระหว่างการทดสอบ ถ้าต้องการแก้ให้แจ้งผมก่อน
 
 ถ้าต้องการ ผมช่วยเขียนคำสั่ง PowerShell แบบสั้นให้คุณดึง HTML body ของ URL ที่ TikTok พยายามเข้าถึง (เพื่อยืนยันเนื้อหา) — บอกผมว่าต้องการหรือเปล่า
+
+### วิธีตรวจด้วยสคริปต์ PowerShell (local)
+
+ผมเพิ่มสคริปต์ helper `scripts/fetch_url.ps1` เพื่อช่วยดึง status, headers และส่วนต้นของ body ของ URL ที่ TikTok เรียก (ใช้สำหรับ debug)
+
+ตัวอย่างการรัน (จากโฟลเดอร์ repo root ใน PowerShell):
+
+```powershell
+.\scripts\fetch_url.ps1 -Url "https://nonw1301-stack.github.io/Shopee-affiliate-auto-content-repo/tiktok-verify-awd551s8ff0g2r8n.html"
+```
+
+สคริปต์จะแสดง HTTP status, headers และตัวอย่าง body (2000 ตัวอักษรเริ่มต้น) — ถ้าต้องการบันทึกผลเต็ม ๆ ให้ pipe ไปยัง `Out-File` เช่น:
+
+```powershell
+.\scripts\fetch_url.ps1 -Url "<URL>" | Out-File full_response.txt
+```
+
