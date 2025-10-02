@@ -1,10 +1,12 @@
 from .shopee_client import ShopeeClient
 from .openai_client import OpenAIClient
 from .config import Config
+from .db import DB
 import os
 
 shopee = ShopeeClient()
 openai_client = OpenAIClient()
+db = DB()
 
 os.makedirs(Config.OUTPUT_DIR, exist_ok=True)
 
@@ -16,6 +18,9 @@ def run_once():
     for it in items.get("items", [])[: Config.MAX_PRODUCTS]:
         itemid = it.get("itemid") or it.get("item_id")
         shopid = it.get("shopid") or it.get("shop_id")
+        # Skip if already posted
+        if db.is_posted(str(itemid)):
+            continue
         name = it.get("name")
         price = (it.get("price") or 0) / 100000
 
@@ -36,6 +41,8 @@ def run_once():
         slug = name.replace(" ", "_")[:40]
         with open(os.path.join(Config.OUTPUT_DIR, f"{slug}.txt"), "w", encoding="utf-8") as f:
             f.write(caption + "\n\n" + aff_link)
+        # Mark as posted in DB
+        db.mark_posted(str(itemid), str(shopid))
 
     return results
 
