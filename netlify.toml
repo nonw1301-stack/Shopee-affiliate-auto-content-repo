@@ -1,0 +1,20 @@
+[build]
+  publish = "docs"
+
+[dev]
+  publish = "docs"
+
+[[redirects]]
+  from = "/tiktok-verify-awd551s8ff0g2r8n.html/*"
+  to = "/tiktok-verify-awd551s8ff0g2r8n/"
+  status = 200
+
+[[redirects]]
+  from = "/tiktok-verify-awd551s8ff0g2r8n.txt/*"
+  to = "/tiktok-verify-awd551s8ff0g2r8n.txt"
+  status = 200
+
+[[redirects]]
+  from = "/tiktok6BhCfHOzgJpfpHRdyUu0KRLFBWqYHWzh.txt/*"
+  to = "/tiktok6BhCfHOzgJpfpHRdyUu0KRLFBWqYHWzh.txt"
+  status = 200
