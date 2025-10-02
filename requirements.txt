@@ -6,3 +6,4 @@ moviepy
 fastapi
 uvicorn
 PyYAML
+pytest
