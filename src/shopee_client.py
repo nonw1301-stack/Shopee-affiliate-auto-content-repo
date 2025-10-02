@@ -41,6 +41,9 @@ class ShopeeClient:
     def _sign(self, path, payload):
         # placeholder: implement Shopee signing ifจำเป็น
         message = path + str(int(time.time()))
+        if not self.partner_key:
+            # In test/dev environments partner_key may be missing; return empty signature
+            return ""
         return hmac.new(self.partner_key.encode(), message.encode(), hashlib.sha256).hexdigest()
 
     @retry((requests.RequestException, ), tries=3, delay=1, backoff=2)
