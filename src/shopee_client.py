@@ -39,12 +39,28 @@ class ShopeeClient:
         self.base = base or Config.SHOPEE_API_BASE
 
     def _sign(self, path, payload):
-        # placeholder: implement Shopee signing ifจำเป็น
-        message = path + str(int(time.time()))
+        # Default signing: HMAC-SHA256 over (path + sorted_payload + timestamp)
+        # Many Shopee Partner APIs require a timestamp and HMAC using partner_key.
+        # This implementation is a reasonable starting point but MUST be adjusted
+        # to match Shopee's official spec for your region.
+        ts = str(int(time.time()))
+        # Prepare payload string deterministically
+        if isinstance(payload, dict):
+            # sort keys to ensure consistent signing
+            try:
+                items = sorted(payload.items())
+                payload_str = urlencode(items)
+            except Exception:
+                payload_str = str(payload)
+        else:
+            payload_str = str(payload)
+
+        message = path + payload_str + ts
         if not self.partner_key:
-            # In test/dev environments partner_key may be missing; return empty signature
             return ""
-        return hmac.new(self.partner_key.encode(), message.encode(), hashlib.sha256).hexdigest()
+        sig = hmac.new(self.partner_key.encode(), message.encode(), hashlib.sha256).hexdigest()
+        # return signature and timestamp so callers can set headers
+        return sig, ts
 
     @retry((requests.RequestException, ), tries=3, delay=1, backoff=2)
     def search_popular_items(self, limit=10):
@@ -52,7 +68,12 @@ class ShopeeClient:
         path = "/items/popular"
         url = f"{self.base}{path}"
         params = {"partner_id": self.partner_id, "limit": limit}
-        headers = {"Content-Type": "application/json", "X-Signature": self._sign(path, params)}
+        sig = self._sign(path, params)
+        if isinstance(sig, tuple):
+            signature, ts = sig
+            headers = {"Content-Type": "application/json", "X-Signature": signature, "X-Timestamp": ts}
+        else:
+            headers = {"Content-Type": "application/json", "X-Signature": sig}
         resp = requests.get(url, params=params, headers=headers, timeout=15)
         resp.raise_for_status()
         logger.info("Fetched popular items, count=%s", len(resp.json().get('items', [])))
@@ -64,7 +85,12 @@ class ShopeeClient:
         path = "/items/generate_affiliate"
         url = f"{self.base}{path}"
         payload = {"partner_id": self.partner_id, "item_id": item_id, "shopid": shop_id}
-        headers = {"Content-Type": "application/json", "X-Signature": self._sign(path, payload)}
+        sig = self._sign(path, payload)
+        if isinstance(sig, tuple):
+            signature, ts = sig
+            headers = {"Content-Type": "application/json", "X-Signature": signature, "X-Timestamp": ts}
+        else:
+            headers = {"Content-Type": "application/json", "X-Signature": sig}
         resp = requests.post(url, json=payload, headers=headers, timeout=15)
         resp.raise_for_status()
         logger.info("Generated affiliate link for item=%s", item_id)
