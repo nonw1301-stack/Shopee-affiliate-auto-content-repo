@@ -1,0 +1,8 @@
+requests
+python-dotenv
+openai
+Pillow
+moviepy
+fastapi
+uvicorn
+PyYAML
